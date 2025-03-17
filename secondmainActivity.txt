@@ -1,0 +1,133 @@
+package com.example.listinhadobruno
+
+import android.os.Bundle
+import android.text.TextUtils
+import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.Spinner
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import kotlinx.coroutines.*
+import org.json.JSONObject
+import android.widget.*
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+import android.os.Handler
+import android.os.Looper
+import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.chromium.base.Callback
+
+import okhttp3.Response
+import okhttp3.Call
+
+
+class SecondActivity : AppCompatActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_second)
+
+        val textTexto  = findViewById<TextView>(R.id.Texto)
+        val textTextoTraduzido = findViewById<TextView>(R.id.TextoTraduzido)
+
+        val cbolist = findViewById<Spinner>(R.id.idioma1)
+        val cbolist2 = findViewById<Spinner>(R.id.idioma2)
+        val btnTraduzir = findViewById<Button>(R.id.btnTraduzir)
+
+        val nomesIdiomas = arrayOf("Inglês", "Português", "Espanhol", "Francês")
+        val codigosIdiomas = arrayOf("en", "pt", "es", "fr")
+
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, nomesIdiomas)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+
+        cbolist.adapter = adapter
+        cbolist2.adapter = adapter
+
+        btnTraduzir.setOnClickListener {
+            val textoParaTraduzir = textTexto.text.toString()
+
+            if (TextUtils.isEmpty(textoParaTraduzir)) {
+                textTexto.text = "Preencha este campo!"
+            } else {
+                val indexCbo1 = cbolist.selectedItemPosition
+                val indexCbo2 = cbolist2.selectedItemPosition
+
+                val idiomaOrigem = codigosIdiomas[indexCbo1]
+                val idiomaDestino = codigosIdiomas[indexCbo2]
+                Toast.makeText(this, "Traduzindo de $idiomaOrigem para $idiomaDestino", Toast.LENGTH_SHORT).show()
+
+                traduzirTexto(textoParaTraduzir, idiomaOrigem, idiomaDestino, textTextoTraduzido)
+            }
+        }
+    }
+
+    private fun traduzirTexto(texto: String, origem: String, destino: String, textView: TextView) {
+        val client = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS) // Timeout de conexão
+            .readTimeout(30, TimeUnit.SECONDS)    // Timeout de leitura
+            .writeTimeout(30, TimeUnit.SECONDS)   // Timeout de escrita
+            .build()
+
+        // URL da API MyMemory com os parâmetros de tradução
+        val url = "https://api.mymemory.translated.net/get?q=${texto}&langpair=${origem}|${destino}"
+
+        // Cria a requisição GET
+        val request = Request.Builder()
+            .url(url)
+            .get() // Método GET
+            .build()
+
+        // Envia a requisição de forma assíncrona
+        client.newCall(request).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                // Trata erros de rede ou falhas na requisição
+                Handler(Looper.getMainLooper()).post {
+                    textView.text = "Erro na tradução: ${e.message}"
+                }
+                e.printStackTrace()
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    val responseBody = response.body?.string()
+                    val code = response.code
+
+                    // Logs para depuração
+                    println("Código de status: $code")
+                    println("Resposta da API: $responseBody")
+
+                    if (!response.isSuccessful) {
+                        // Trata erros HTTP (códigos 4xx ou 5xx)
+                        Handler(Looper.getMainLooper()).post {
+                            textView.text = "Erro HTTP: $code - $responseBody"
+                        }
+                        return
+                    }
+
+                    try {
+                        // Processa a resposta JSON
+                        val jsonObject = JSONObject(responseBody ?: "{}")
+                        val translatedText = jsonObject
+                            .optJSONObject("responseData") // Acessa o objeto responseData
+                            ?.optString("translatedText", "Erro ao traduzir") // Extrai o texto traduzido
+
+                        // Atualiza a UI com o texto traduzido
+                        Handler(Looper.getMainLooper()).post {
+                            textView.text = translatedText
+                        }
+                    } catch (e: Exception) {
+                        // Trata erros ao processar o JSON
+                        Handler(Looper.getMainLooper()).post {
+                            textView.text = "Erro ao processar resposta: ${e.message}"
+                        }
+                        e.printStackTrace()
+                    }
+                }
+            }
+        })
+    }
+
+}

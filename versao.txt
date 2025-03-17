@@ -1,0 +1,2 @@
+okhttp = "4.12.0"  # Versão mais recente
+json = "20210307"
